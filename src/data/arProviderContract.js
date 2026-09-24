@@ -5,10 +5,12 @@ const MAX_PROVIDER_SELECTION_LENGTH = 512;
 export function parseArProviderSelection(value) {
   if (typeof value !== 'string') return null;
   const normalized = value.trim().toLowerCase();
-  if (!normalized || normalized.length > MAX_PROVIDER_SELECTION_LENGTH) return null;
+  if (!normalized || normalized.length > MAX_PROVIDER_SELECTION_LENGTH)
+    return null;
   if (normalized === 'all' || normalized === 'none') return normalized;
   const ids = normalized.split(',');
-  if (!ids.length || ids.some((id) => !AR_PROVIDER_ID_PATTERN.test(id))) return null;
+  if (!ids.length || ids.some((id) => !AR_PROVIDER_ID_PATTERN.test(id)))
+    return null;
   return [...new Set(ids)].sort().join(',');
 }
 

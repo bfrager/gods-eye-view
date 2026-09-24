@@ -7,14 +7,21 @@ import {
 } from '../overlays/worldOverlay.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerDynamicCredit } from './dataCredits.js';
-import { registerPickOwner, resolvePickId, unregisterPickOwner } from './pickRegistry.js';
+import {
+  registerPickOwner,
+  resolvePickId,
+  unregisterPickOwner,
+} from './pickRegistry.js';
 import {
   AR_PROVIDER_ID_PATTERN,
   DEFAULT_AR_PROVIDER_SELECTION,
   normalizeArProviderSelection,
 } from './arProviderContract.js';
 
-export { DEFAULT_AR_PROVIDER_SELECTION, normalizeArProviderSelection } from './arProviderContract.js';
+export {
+  DEFAULT_AR_PROVIDER_SELECTION,
+  normalizeArProviderSelection,
+} from './arProviderContract.js';
 
 export const AR_EXPERIENCES_LAYER_ID = 'ar-experiences';
 export const AR_OVERLAY_SOURCE_ID = 'ar-experiences';
@@ -45,7 +52,11 @@ function safeLaunchUrl(value) {
   if (!value) return null;
   try {
     const url = new URL(String(value).trim());
-    if (url.protocol === 'https:' || url.protocol === 'http:' || url.protocol === 'arpoisedeeplink:') {
+    if (
+      url.protocol === 'https:' ||
+      url.protocol === 'http:' ||
+      url.protocol === 'arpoisedeeplink:'
+    ) {
       return url.href;
     }
   } catch {
@@ -108,13 +119,15 @@ export function resolveSelectedArProviderIds(selection, providers) {
 function canonicalSelection(ids, providers) {
   const available = providers.filter(providerAvailable).map(({ id }) => id);
   const selected = available.filter((id) => ids.has(id));
-  if (selected.length === available.length && available.length > 0) return 'all';
+  if (selected.length === available.length && available.length > 0)
+    return 'all';
   return selected.length ? selected.join(',') : 'none';
 }
 
 export function toggleArProviderSelection(selection, providerId, providers) {
   const provider = providers.find(({ id }) => id === providerId);
-  if (!providerAvailable(provider)) return normalizeArProviderSelection(selection);
+  if (!providerAvailable(provider))
+    return normalizeArProviderSelection(selection);
   const selected = new Set(resolveSelectedArProviderIds(selection, providers));
   if (selected.has(providerId)) selected.delete(providerId);
   else selected.add(providerId);
@@ -125,17 +138,28 @@ export function createArProviderChips(providers, selection, includePast) {
   const selected = new Set(resolveSelectedArProviderIds(selection, providers));
   const chips = providers.map((provider) => {
     const available = providerAvailable(provider);
-    const error = provider.status === 'error' || provider.status === 'unconfigured' || !available;
+    const error =
+      provider.status === 'error' ||
+      provider.status === 'unconfigured' ||
+      !available;
     return {
       id: `provider:${provider.id}`,
       label: provider.label,
       active: available && selected.has(provider.id),
       disabled: !available,
-      state: error ? 'error' : (selected.has(provider.id) ? 'active' : 'idle'),
-      title: provider.reason || provider.error
-        || `${selected.has(provider.id) ? 'Hide' : 'Show'} ${provider.label} AR experiences`,
+      state: error ? 'error' : selected.has(provider.id) ? 'active' : 'idle',
+      title:
+        provider.reason ||
+        provider.error ||
+        `${selected.has(provider.id) ? 'Hide' : 'Show'} ${provider.label} AR experiences`,
       params: available
-        ? { providers: toggleArProviderSelection(selection, provider.id, providers) }
+        ? {
+            providers: toggleArProviderSelection(
+              selection,
+              provider.id,
+              providers,
+            ),
+          }
         : null,
     };
   });
@@ -145,7 +169,9 @@ export function createArProviderChips(providers, selection, includePast) {
     active: includePast === true,
     disabled: false,
     state: includePast ? 'active' : 'idle',
-    title: includePast ? 'Hide expired AR experiences' : 'Include expired AR experiences',
+    title: includePast
+      ? 'Hide expired AR experiences'
+      : 'Include expired AR experiences',
     params: { includePast: includePast !== true },
   });
   return chips;
@@ -156,8 +182,17 @@ export function normalizeArExperience(candidate) {
   const providerId = cleanText(candidate?.providerId, 64)?.toLowerCase();
   const lat = finiteNumber(candidate?.lat);
   const lon = finiteNumber(candidate?.lon);
-  if (!id || !providerId || lat === null || lon === null
-    || lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  if (
+    !id ||
+    !providerId ||
+    lat === null ||
+    lon === null ||
+    lat < -90 ||
+    lat > 90 ||
+    lon < -180 ||
+    lon > 180
+  )
+    return null;
   return {
     id,
     providerId,
@@ -194,10 +229,11 @@ function distanceLabel(distanceM) {
   return `${Math.max(1, Math.round(distanceM))} M AWAY`;
 }
 
-export function createArOverlayEntry(experience, position, {
-  accent = '#4aa8ff',
-  launch = launchArExperience,
-} = {}) {
+export function createArOverlayEntry(
+  experience,
+  position,
+  { accent = '#4aa8ff', launch = launchArExperience } = {},
+) {
   if (!experience || !position) return null;
   const provider = compactUpper(experience.providerLabel, 24);
   const contentType = compactUpper(experience.contentType, 24);
@@ -222,9 +258,7 @@ export function createArOverlayEntry(experience, position, {
     accessibilityLabel: launchable
       ? `Open ${experience.title} from ${experience.providerLabel}`
       : '',
-    activate: launchable
-      ? () => launch(experience) !== false
-      : null,
+    activate: launchable ? () => launch(experience) !== false : null,
     anchorRadiusPx: 8,
     minAnchorGapPx: 5,
     verticalOnly: true,
@@ -281,14 +315,19 @@ function defaultQueryResolver(viewer) {
   return {
     lat: Math.round(lat * 1_000_000) / 1_000_000,
     lon: Math.round(lon * 1_000_000) / 1_000_000,
-    radiusM: Math.round(Math.max(1_500, Math.min(100_000, height * 0.5 || 5_000))),
+    radiusM: Math.round(
+      Math.max(1_500, Math.min(100_000, height * 0.5 || 5_000)),
+    ),
   };
 }
 
 async function defaultFetchJson(url, { signal } = {}) {
   const response = await fetch(url, { signal, cache: 'no-store' });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload?.error || `AR content request returned HTTP ${response.status}`);
+  if (!response.ok)
+    throw new Error(
+      payload?.error || `AR content request returned HTTP ${response.status}`,
+    );
   return payload;
 }
 
@@ -306,7 +345,8 @@ function providerCredit(provider) {
   const linked = provider.website
     ? `<a href="${escapeHtml(provider.website)}" target="_blank" rel="noopener">${label}</a>`
     : label;
-  const protocol = provider.protocol === 'oscp' ? ' via Open AR Cloud OSCP' : '';
+  const protocol =
+    provider.protocol === 'oscp' ? ' via Open AR Cloud OSCP' : '';
   return {
     key: `ar-provider:${provider.id}`,
     html: `AR experiences: ${linked}${protocol}`,
@@ -317,7 +357,8 @@ export function createArExperiencesLayer({
   queryResolver = defaultQueryResolver,
   fetchJson = defaultFetchJson,
   overlayHost = DEFAULT_OVERLAY_HOST,
-  handlerFactory = (viewer) => new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas),
+  handlerFactory = (viewer) =>
+    new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas),
   launch = launchArExperience,
   now = Date.now,
 } = {}) {
@@ -350,13 +391,15 @@ export function createArExperiencesLayer({
 
   function visualFingerprint(nextProviders, nextExperiences) {
     return JSON.stringify({
-      providers: nextProviders.map(({ id, label, color, configured, enabled }) => ({
-        id,
-        label,
-        color,
-        configured,
-        enabled,
-      })),
+      providers: nextProviders.map(
+        ({ id, label, color, configured, enabled }) => ({
+          id,
+          label,
+          color,
+          configured,
+          enabled,
+        }),
+      ),
       experiences: nextExperiences,
     });
   }
@@ -390,9 +433,10 @@ export function createArExperiencesLayer({
           outlineColor: Cesium.Color.WHITE.withAlpha(0.78),
           outlineWidth: 1,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          heightReference: experience.altitudeM === null
-            ? Cesium.HeightReference.CLAMP_TO_GROUND
-            : Cesium.HeightReference.NONE,
+          heightReference:
+            experience.altitudeM === null
+              ? Cesium.HeightReference.CLAMP_TO_GROUND
+              : Cesium.HeightReference.NONE,
         },
         properties: {
           layerId: AR_EXPERIENCES_LAYER_ID,
@@ -402,7 +446,10 @@ export function createArExperiencesLayer({
         },
       });
       experienceByEntityId.set(entityId, experience);
-      const entry = createArOverlayEntry(experience, position, { accent: provider.color, launch });
+      const entry = createArOverlayEntry(experience, position, {
+        accent: provider.color,
+        launch,
+      });
       if (entry) {
         entries.push(entry);
         experienceByOverlayId.set(entry.id, experience);
@@ -424,11 +471,17 @@ export function createArExperiencesLayer({
     handler.setInputAction((click) => {
       if (!enabled) return;
       const pickedId = resolvePickId(viewer.scene?.pick?.(click.position));
-      let experience = pickedId ? experienceByEntityId.get(String(pickedId)) : null;
+      let experience = pickedId
+        ? experienceByEntityId.get(String(pickedId))
+        : null;
       if (!experience) {
-        const hit = overlayHost.hitTest?.(click.position?.x, click.position?.y, {
-          sourceId: AR_OVERLAY_SOURCE_ID,
-        });
+        const hit = overlayHost.hitTest?.(
+          click.position?.x,
+          click.position?.y,
+          {
+            sourceId: AR_OVERLAY_SOURCE_ID,
+          },
+        );
         experience = hit ? experienceByOverlayId.get(hit.entryId) : null;
       }
       if (experience) launch(experience);
@@ -437,12 +490,15 @@ export function createArExperiencesLayer({
 
   function registerCredits() {
     for (const provider of providers) {
-      if (providerAvailable(provider)) registerDynamicCredit(viewer, providerCredit(provider));
+      if (providerAvailable(provider))
+        registerDynamicCredit(viewer, providerCredit(provider));
     }
   }
 
   function sourceLabel() {
-    const active = providers.filter((provider) => selectedIds().has(provider.id));
+    const active = providers.filter((provider) =>
+      selectedIds().has(provider.id),
+    );
     if (active.length === 1) return active[0].label;
     if (active.length > 1) return `${active.length} AR providers`;
     return 'AR providers';
@@ -472,12 +528,19 @@ export function createArExperiencesLayer({
         providers: providerSelection,
         includePast: includePast ? '1' : '0',
       });
-      const payload = await fetchJson(`/api/ar-content?${params}`, { signal: controller.signal });
-      if (generation !== requestGeneration || controller.signal.aborted) return true;
-      const nextProviders = (Array.isArray(payload?.providers) ? payload.providers : [])
+      const payload = await fetchJson(`/api/ar-content?${params}`, {
+        signal: controller.signal,
+      });
+      if (generation !== requestGeneration || controller.signal.aborted)
+        return true;
+      const nextProviders = (
+        Array.isArray(payload?.providers) ? payload.providers : []
+      )
         .map(normalizeProvider)
         .filter(Boolean);
-      const nextExperiences = (Array.isArray(payload?.experiences) ? payload.experiences : [])
+      const nextExperiences = (
+        Array.isArray(payload?.experiences) ? payload.experiences : []
+      )
         .map(normalizeArExperience)
         .filter(Boolean);
       const nextFingerprint = visualFingerprint(nextProviders, nextExperiences);
@@ -489,24 +552,36 @@ export function createArExperiencesLayer({
         render();
       }
       const selected = selectedIds();
-      const selectedProviders = providers.filter((provider) => selected.has(provider.id));
-      const failures = selectedProviders.filter((provider) => provider.status === 'error');
-      const staleProviders = selectedProviders.filter((provider) => provider.status === 'stale');
+      const selectedProviders = providers.filter((provider) =>
+        selected.has(provider.id),
+      );
+      const failures = selectedProviders.filter(
+        (provider) => provider.status === 'error',
+      );
+      const staleProviders = selectedProviders.filter(
+        (provider) => provider.status === 'stale',
+      );
       const providerIssues = [...failures, ...staleProviders];
       available = providers.some(providerAvailable);
       stale = staleProviders.length > 0;
       degraded = providerIssues.length > 0;
-      error = providerIssues.length > 0
-        ? providerIssues.map((provider) => (
-          provider.error || `${provider.label} ${provider.status === 'stale' ? 'is using cached data' : 'is unavailable'}`
-        )).join(' · ')
-        : null;
+      error =
+        providerIssues.length > 0
+          ? providerIssues
+              .map(
+                (provider) =>
+                  provider.error ||
+                  `${provider.label} ${provider.status === 'stale' ? 'is using cached data' : 'is unavailable'}`,
+              )
+              .join(' · ')
+          : null;
       source = sourceLabel();
       if (!stale) lastUpdate = now();
       rowControlsListener?.();
       return true;
     } catch (caught) {
-      if (controller.signal.aborted || caught?.name === 'AbortError') return true;
+      if (controller.signal.aborted || caught?.name === 'AbortError')
+        return true;
       error = cleanText(caught?.message, 180) || 'AR provider request failed';
       degraded = experiences.length > 0;
       stale = experiences.length > 0;
@@ -534,13 +609,14 @@ export function createArExperiencesLayer({
       dataSource = new Cesium.CustomDataSource(AR_EXPERIENCES_LAYER_ID);
       dataSource.show = false;
       viewer.dataSources.add(dataSource);
-      registerPickOwner(AR_EXPERIENCES_LAYER_ID, (pickedId) => (
-        experienceByEntityId.has(String(pickedId))
-      ));
+      registerPickOwner(AR_EXPERIENCES_LAYER_ID, (pickedId) =>
+        experienceByEntityId.has(String(pickedId)),
+      );
       installInteraction();
-      removeMoveEnd = viewer.camera?.moveEnd?.addEventListener?.(() => {
-        if (enabled) void update(viewer);
-      }) || null;
+      removeMoveEnd =
+        viewer.camera?.moveEnd?.addEventListener?.(() => {
+          if (enabled) void update(viewer);
+        }) || null;
       overlayHost.setVisible(AR_OVERLAY_SOURCE_ID, false);
       return true;
     },
@@ -597,7 +673,10 @@ export function createArExperiencesLayer({
           visibilityFilterChanged = true;
         }
       }
-      if (Object.hasOwn(params, 'includePast') && typeof params.includePast === 'boolean') {
+      if (
+        Object.hasOwn(params, 'includePast') &&
+        typeof params.includePast === 'boolean'
+      ) {
         if (params.includePast !== includePast) {
           includePast = params.includePast;
           shouldRefresh = true;
@@ -619,7 +698,9 @@ export function createArExperiencesLayer({
     },
 
     getRowControls() {
-      return { chips: createArProviderChips(providers, providerSelection, includePast) };
+      return {
+        chips: createArProviderChips(providers, providerSelection, includePast),
+      };
     },
 
     setRowControlsListener(listener) {

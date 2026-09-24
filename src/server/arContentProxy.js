@@ -1,6 +1,10 @@
-import { coalesceProxyRequest, readResponseTextCapped } from './proxyUtils.js';
+import {
+  coalesceProxyRequest,
+  readResponseTextCapped,
+} from '../sources/httpBody.js';
 
-const ARPOISE_DIRECTORY_URL = 'https://www.arpoise.com/php/dir/web/porpoise.php';
+const ARPOISE_DIRECTORY_URL =
+  'https://www.arpoise.com/php/dir/web/porpoise.php';
 const ARPOISE_LAYER_NAME = 'Arpoise-Directory';
 const DEFAULT_TIMEOUT_MS = 8_000;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -32,20 +36,33 @@ function finiteNumber(value) {
 }
 
 function validCoordinates(lat, lon) {
-  return Number.isFinite(lat) && lat >= -90 && lat <= 90
-    && Number.isFinite(lon) && lon >= -180 && lon <= 180;
+  return (
+    Number.isFinite(lat) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    Number.isFinite(lon) &&
+    lon >= -180 &&
+    lon <= 180
+  );
 }
 
 function isLoopbackHostname(hostname) {
   const normalized = String(hostname || '').toLowerCase();
-  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
+  return (
+    normalized === 'localhost' ||
+    normalized === '127.0.0.1' ||
+    normalized === '::1'
+  );
 }
 
 function configuredBaseUrl(value) {
   if (!value) return null;
   try {
     const url = new URL(String(value).trim());
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopbackHostname(url.hostname))) {
+    if (
+      url.protocol !== 'https:' &&
+      !(url.protocol === 'http:' && isLoopbackHostname(url.hostname))
+    ) {
       return null;
     }
     url.hash = '';
@@ -73,7 +90,9 @@ function safeHttpUrl(value) {
   if (!value) return null;
   try {
     const url = new URL(String(value).trim());
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+    return url.protocol === 'https:' || url.protocol === 'http:'
+      ? url.href
+      : null;
   } catch {
     return null;
   }
@@ -83,7 +102,11 @@ function safeLaunchUrl(value) {
   if (!value) return null;
   try {
     const url = new URL(String(value).trim());
-    if (url.protocol === 'https:' || url.protocol === 'http:' || url.protocol === 'arpoisedeeplink:') {
+    if (
+      url.protocol === 'https:' ||
+      url.protocol === 'http:' ||
+      url.protocol === 'arpoisedeeplink:'
+    ) {
       return url.href;
     }
   } catch {
@@ -133,10 +156,13 @@ export function buildArProviderCatalog(env = process.env) {
   const geoverseApiUrl = configuredBaseUrl(env.GEOVERSE_API_URL);
   const geoverseWebUrl = configuredBaseUrl(env.GEOVERSE_WEB_URL);
   const geoverseConfigured = Boolean(geoverseApiUrl && geoverseWebUrl);
-  const geoverseEnabled = geoverseConfigured
-    && !/^(0|false|off)$/i.test(String(env.GEOVERSE_AR_ENABLED ?? 'true'));
+  const geoverseEnabled =
+    geoverseConfigured &&
+    !/^(0|false|off)$/i.test(String(env.GEOVERSE_AR_ENABLED ?? 'true'));
   const meshmapApiUrl = configuredBaseUrl(env.MESHMAP_API_URL);
-  const meshmapEnabled = Boolean(meshmapApiUrl) && !/^(0|false|off)$/i.test(String(env.MESHMAP_AR_ENABLED ?? 'true'));
+  const meshmapEnabled =
+    Boolean(meshmapApiUrl) &&
+    !/^(0|false|off)$/i.test(String(env.MESHMAP_AR_ENABLED ?? 'true'));
   const arpoiseEnabled = boolEnv(env.ARPOISE_ENABLED, false);
 
   const providers = [
@@ -146,7 +172,11 @@ export function buildArProviderCatalog(env = process.env) {
       protocol: 'geoverse',
       configured: geoverseConfigured,
       enabled: geoverseEnabled,
-      reason: geoverseProviderReason(geoverseApiUrl, geoverseWebUrl, geoverseEnabled),
+      reason: geoverseProviderReason(
+        geoverseApiUrl,
+        geoverseWebUrl,
+        geoverseEnabled,
+      ),
       color: PROVIDER_COLORS.geoverse,
       attribution: 'Geoverse',
       website: geoverseWebUrl,
@@ -167,7 +197,10 @@ export function buildArProviderCatalog(env = process.env) {
       website: 'https://www.meshmap.com/',
       maxRadiusM: 100_000,
       _baseUrl: meshmapApiUrl,
-      _nearbyPath: configuredNearbyPath(env.MESHMAP_NEARBY_PATH, '/api/location/pins'),
+      _nearbyPath: configuredNearbyPath(
+        env.MESHMAP_NEARBY_PATH,
+        '/api/location/pins',
+      ),
       _apiKey: cleanText(env.MESHMAP_API_KEY, 2048),
     },
     {
@@ -190,12 +223,16 @@ export function buildArProviderCatalog(env = process.env) {
   ];
 
   let oscpCount = 0;
-  for (const [index, entry] of parseJsonArray(env.OSCP_INSTANCES_JSON).entries()) {
+  for (const [index, entry] of parseJsonArray(
+    env.OSCP_INSTANCES_JSON,
+  ).entries()) {
     if (oscpCount >= MAX_OSCP_INSTANCES) break;
     const slug = cleanText(entry?.id, 48)?.toLowerCase();
     const baseUrl = configuredBaseUrl(entry?.baseUrl);
     if (!slug || !PROVIDER_ID_RE.test(slug) || !baseUrl) continue;
-    const label = cleanText(entry?.name || entry?.operator, 80) || `OSCP Provider ${index + 1}`;
+    const label =
+      cleanText(entry?.name || entry?.operator, 80) ||
+      `OSCP Provider ${index + 1}`;
     const enabled = entry?.enabled !== false;
     const apiKeyEnv = cleanText(entry?.apiKeyEnv, 80);
     providers.push({
@@ -206,12 +243,15 @@ export function buildArProviderCatalog(env = process.env) {
       enabled,
       reason: providerReason(true, enabled),
       color: cleanText(entry?.color, 24) || PROVIDER_COLORS.oscp,
-      attribution: cleanText(entry?.attribution, 180) || `${label} via Open AR Cloud OSCP`,
+      attribution:
+        cleanText(entry?.attribution, 180) || `${label} via Open AR Cloud OSCP`,
       website: safeHttpUrl(entry?.website),
       maxRadiusM: 100_000,
       _baseUrl: baseUrl,
       _nearbyPath: configuredNearbyPath(entry?.nearbyPath, '/search/nearby'),
-      _apiKey: cleanText(entry?.apiKey, 2048) || (apiKeyEnv ? cleanText(env[apiKeyEnv], 2048) : null),
+      _apiKey:
+        cleanText(entry?.apiKey, 2048) ||
+        (apiKeyEnv ? cleanText(env[apiKeyEnv], 2048) : null),
       _launchUrlTemplate: cleanText(entry?.launchUrlTemplate, 512),
     });
     oscpCount += 1;
@@ -250,7 +290,10 @@ export function buildArpoiseRequestUrl(provider, query) {
   url.searchParams.set('lon', String(query.lon));
   url.searchParams.set('layerName', ARPOISE_LAYER_NAME);
   url.searchParams.set('userId', 'public');
-  url.searchParams.set('radius', String(Math.max(100, Math.min(5_000, Math.round(query.radiusM)))));
+  url.searchParams.set(
+    'radius',
+    String(Math.max(100, Math.min(5_000, Math.round(query.radiusM)))),
+  );
   url.searchParams.set('accuracy', '100');
   return url;
 }
@@ -259,9 +302,12 @@ function haversineDistanceM(lat1, lon1, lat2, lon2) {
   const toRad = Math.PI / 180;
   const dLat = (lat2 - lat1) * toRad;
   const dLon = (lon2 - lon1) * toRad;
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2;
-  return 6_371_008.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2;
+  return (
+    6_371_008.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)))
+  );
 }
 
 function normalizedDistance(value, lat, lon, query) {
@@ -306,55 +352,72 @@ function compactNormalized(items) {
 }
 
 export function normalizeGeoverseExperiences(payload, provider, query) {
-  const experiences = Array.isArray(payload?.experiences) ? payload.experiences : [];
-  return compactNormalized(experiences.map((entry) => {
-    const id = cleanText(entry?.id, 160);
-    const detailUrl = id && provider?._webUrl
-      ? `${provider._webUrl}/e/${encodeURIComponent(id)}`
-      : null;
-    return normalizeExperience({
-      id,
-      title: entry?.name,
-      description: entry?.description,
-      creator: entry?.creatorName || entry?.creatorId,
-      lat: entry?.lat ?? entry?.anchor?.lat,
-      lon: entry?.lng ?? entry?.lon ?? entry?.anchor?.lng,
-      altitudeM: entry?.altitude ?? entry?.anchor?.altitude,
-      distanceM: entry?.distanceM,
-      contentType: 'GXP',
-      launchUrl: detailUrl,
-      sourceUrl: detailUrl,
-      updatedAt: entry?.updatedAt,
-      startsAt: entry?.startsAt,
-      endsAt: entry?.endsAt,
-    }, provider, query);
-  }));
+  const experiences = Array.isArray(payload?.experiences)
+    ? payload.experiences
+    : [];
+  return compactNormalized(
+    experiences.map((entry) => {
+      const id = cleanText(entry?.id, 160);
+      const detailUrl =
+        id && provider?._webUrl
+          ? `${provider._webUrl}/e/${encodeURIComponent(id)}`
+          : null;
+      return normalizeExperience(
+        {
+          id,
+          title: entry?.name,
+          description: entry?.description,
+          creator: entry?.creatorName || entry?.creatorId,
+          lat: entry?.lat ?? entry?.anchor?.lat,
+          lon: entry?.lng ?? entry?.lon ?? entry?.anchor?.lng,
+          altitudeM: entry?.altitude ?? entry?.anchor?.altitude,
+          distanceM: entry?.distanceM,
+          contentType: 'GXP',
+          launchUrl: detailUrl,
+          sourceUrl: detailUrl,
+          updatedAt: entry?.updatedAt,
+          startsAt: entry?.startsAt,
+          endsAt: entry?.endsAt,
+        },
+        provider,
+        query,
+      );
+    }),
+  );
 }
 
 export function normalizeMeshmapExperiences(payload, provider, query) {
   const pins = Array.isArray(payload?.pins)
     ? payload.pins
-    : (Array.isArray(payload) ? payload : []);
-  return compactNormalized(pins.map((pin) => {
-    if (pin?.visibility !== 'public') return null;
-    const pose = pin?.geoPose?.position || pin?.geoPose || {};
-    return normalizeExperience({
-      id: pin?.id,
-      title: pin?.title,
-      description: pin?.description || pin?.scanInstructions,
-      creator: pin?.creator || pin?.userName || pin?.userId,
-      lat: pin?.latitude ?? pose.lat ?? pose.latitude,
-      lon: pin?.longitude ?? pose.lon ?? pose.lng ?? pose.longitude,
-      altitudeM: pose.h ?? pose.altitude,
-      distanceM: pin?.distance ?? pin?.distanceM,
-      contentType: pin?.contentType,
-      launchUrl: pin?.contentUrl,
-      sourceUrl: pin?.contentUrl,
-      updatedAt: pin?.updatedAt,
-      startsAt: pin?.startsAt || pin?.startDate,
-      endsAt: pin?.endsAt || pin?.endDate,
-    }, provider, query);
-  }));
+    : Array.isArray(payload)
+      ? payload
+      : [];
+  return compactNormalized(
+    pins.map((pin) => {
+      if (pin?.visibility !== 'public') return null;
+      const pose = pin?.geoPose?.position || pin?.geoPose || {};
+      return normalizeExperience(
+        {
+          id: pin?.id,
+          title: pin?.title,
+          description: pin?.description || pin?.scanInstructions,
+          creator: pin?.creator || pin?.userName || pin?.userId,
+          lat: pin?.latitude ?? pose.lat ?? pose.latitude,
+          lon: pin?.longitude ?? pose.lon ?? pose.lng ?? pose.longitude,
+          altitudeM: pose.h ?? pose.altitude,
+          distanceM: pin?.distance ?? pin?.distanceM,
+          contentType: pin?.contentType,
+          launchUrl: pin?.contentUrl,
+          sourceUrl: pin?.contentUrl,
+          updatedAt: pin?.updatedAt,
+          startsAt: pin?.startsAt || pin?.startDate,
+          endsAt: pin?.endsAt || pin?.endDate,
+        },
+        provider,
+        query,
+      );
+    }),
+  );
 }
 
 function arpoiseCoordinate(value) {
@@ -366,36 +429,47 @@ function arpoiseCoordinate(value) {
 export function normalizeArpoiseExperiences(payload, provider, query) {
   if (finiteNumber(payload?.errorCode) !== 0) return [];
   const hotspots = Array.isArray(payload?.hotspots) ? payload.hotspots : [];
-  return compactNormalized(hotspots.map((hotspot) => {
-    const layerName = cleanText(hotspot?.title || hotspot?.layer, 160);
-    const launchUrl = layerName
-      ? `arpoisedeeplink://DeeplinkLayer?${encodeURIComponent(layerName)}`
-      : null;
-    return normalizeExperience({
-      id: hotspot?.id || layerName,
-      title: hotspot?.line1 || layerName,
-      description: [hotspot?.line3, hotspot?.line4, hotspot?.comment].filter(Boolean).join(' · '),
-      creator: hotspot?.line2,
-      lat: arpoiseCoordinate(hotspot?.lat),
-      lon: arpoiseCoordinate(hotspot?.lon),
-      altitudeM: hotspot?.alt,
-      distanceM: hotspot?.distance,
-      contentType: 'ARpoise layer',
-      launchUrl,
-      sourceUrl: provider?.website,
-      updatedAt: hotspot?.updatedAt || hotspot?.lastUpdate,
-      startsAt: hotspot?.startsAt || hotspot?.startDate,
-      endsAt: hotspot?.endsAt || hotspot?.endDate,
-      attribution: hotspot?.attribution || hotspot?.line2,
-    }, provider, query);
-  }));
+  return compactNormalized(
+    hotspots.map((hotspot) => {
+      const layerName = cleanText(hotspot?.title || hotspot?.layer, 160);
+      const launchUrl = layerName
+        ? `arpoisedeeplink://DeeplinkLayer?${encodeURIComponent(layerName)}`
+        : null;
+      return normalizeExperience(
+        {
+          id: hotspot?.id || layerName,
+          title: hotspot?.line1 || layerName,
+          description: [hotspot?.line3, hotspot?.line4, hotspot?.comment]
+            .filter(Boolean)
+            .join(' · '),
+          creator: hotspot?.line2,
+          lat: arpoiseCoordinate(hotspot?.lat),
+          lon: arpoiseCoordinate(hotspot?.lon),
+          altitudeM: hotspot?.alt,
+          distanceM: hotspot?.distance,
+          contentType: 'ARpoise layer',
+          launchUrl,
+          sourceUrl: provider?.website,
+          updatedAt: hotspot?.updatedAt || hotspot?.lastUpdate,
+          startsAt: hotspot?.startsAt || hotspot?.startDate,
+          endsAt: hotspot?.endsAt || hotspot?.endDate,
+          attribution: hotspot?.attribution || hotspot?.line2,
+        },
+        provider,
+        query,
+      );
+    }),
+  );
 }
 
 function applyUrlTemplate(template, values) {
   if (!template) return null;
   let result = String(template);
   for (const [key, value] of Object.entries(values)) {
-    result = result.replaceAll(`{${key}}`, encodeURIComponent(String(value ?? '')));
+    result = result.replaceAll(
+      `{${key}}`,
+      encodeURIComponent(String(value ?? '')),
+    );
   }
   return result;
 }
@@ -406,42 +480,57 @@ export function normalizeOscpExperiences(payload, provider, query) {
   for (const wrapper of objects) {
     const feature = wrapper?.object || wrapper;
     const properties = feature?.properties || {};
-    const contents = Array.isArray(properties.content) && properties.content.length
-      ? properties.content
-      : [{}];
+    const contents =
+      Array.isArray(properties.content) && properties.content.length
+        ? properties.content
+        : [{}];
     for (const [index, content] of contents.entries()) {
       const position = content?.geopose?.position || {};
       const coordinates = feature?.geometry?.coordinates || [];
       const tags = content?.tags || {};
       const objectId = wrapper?.id || properties.id || feature?.id;
       const id = `${objectId || 'content'}:${index}`;
-      const launchUrl = applyUrlTemplate(provider?._launchUrlTemplate, {
-        id: objectId,
-        contentIndex: index,
-      }) || content?.url;
-      normalized.push(normalizeExperience({
-        id,
-        title: tags.name || tags.title || content?.description || properties.name,
-        description: content?.description || tags.description,
-        creator: tags.artist || tags.creator || tags.author,
-        lat: position.lat ?? coordinates[1],
-        lon: position.lon ?? position.lng ?? coordinates[0],
-        altitudeM: position.h ?? position.altitude ?? coordinates[2],
-        distanceM: wrapper?.distance,
-        contentType: content?.contenttype || content?.metatype,
-        launchUrl,
-        sourceUrl: content?.url,
-        updatedAt: tags.updatedAt || properties.updatedAt,
-        startsAt: tags.startsAt || tags.startDate,
-        endsAt: tags.endsAt || tags.endDate,
-        attribution: tags.attribution,
-      }, provider, query));
+      const launchUrl =
+        applyUrlTemplate(provider?._launchUrlTemplate, {
+          id: objectId,
+          contentIndex: index,
+        }) || content?.url;
+      normalized.push(
+        normalizeExperience(
+          {
+            id,
+            title:
+              tags.name ||
+              tags.title ||
+              content?.description ||
+              properties.name,
+            description: content?.description || tags.description,
+            creator: tags.artist || tags.creator || tags.author,
+            lat: position.lat ?? coordinates[1],
+            lon: position.lon ?? position.lng ?? coordinates[0],
+            altitudeM: position.h ?? position.altitude ?? coordinates[2],
+            distanceM: wrapper?.distance,
+            contentType: content?.contenttype || content?.metatype,
+            launchUrl,
+            sourceUrl: content?.url,
+            updatedAt: tags.updatedAt || properties.updatedAt,
+            startsAt: tags.startsAt || tags.startDate,
+            endsAt: tags.endsAt || tags.endDate,
+            attribution: tags.attribution,
+          },
+          provider,
+          query,
+        ),
+      );
     }
   }
   return compactNormalized(normalized);
 }
 
-export function filterExperiencesByTime(experiences, { includePast = false, now = Date.now() } = {}) {
+export function filterExperiencesByTime(
+  experiences,
+  { includePast = false, now = Date.now() } = {},
+) {
   if (includePast) return [...experiences];
   return experiences.filter((experience) => {
     if (!experience?.endsAt) return true;
@@ -479,14 +568,24 @@ function providerHeaders(provider) {
 }
 
 function buildProviderRequest(provider, query) {
-  if (provider.protocol === 'arpoise') return buildArpoiseRequestUrl(provider, query);
+  if (provider.protocol === 'arpoise')
+    return buildArpoiseRequestUrl(provider, query);
   const url = requestUrl(provider, provider._nearbyPath);
   url.searchParams.set('lat', String(query.lat));
-  url.searchParams.set(provider.protocol === 'geoverse' ? 'lng' : 'lon', String(query.lon));
+  url.searchParams.set(
+    provider.protocol === 'geoverse' ? 'lng' : 'lon',
+    String(query.lon),
+  );
   if (provider.protocol === 'geoverse') {
-    url.searchParams.set('radiusM', String(Math.min(5_000, Math.round(query.radiusM))));
+    url.searchParams.set(
+      'radiusM',
+      String(Math.min(5_000, Math.round(query.radiusM))),
+    );
   } else {
-    url.searchParams.set('radius', String(Math.min(100_000, Math.round(query.radiusM))));
+    url.searchParams.set(
+      'radius',
+      String(Math.min(100_000, Math.round(query.radiusM))),
+    );
   }
   return url;
 }
@@ -497,11 +596,15 @@ async function fetchProviderExperiences(provider, query, fetchImpl) {
     redirect: 'error',
     signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`${provider.label} returned HTTP ${response.status}`);
+  if (!response.ok)
+    throw new Error(`${provider.label} returned HTTP ${response.status}`);
   const payload = await readJsonCapped(response);
-  if (provider.protocol === 'geoverse') return normalizeGeoverseExperiences(payload, provider, query);
-  if (provider.protocol === 'meshmap') return normalizeMeshmapExperiences(payload, provider, query);
-  if (provider.protocol === 'arpoise') return normalizeArpoiseExperiences(payload, provider, query);
+  if (provider.protocol === 'geoverse')
+    return normalizeGeoverseExperiences(payload, provider, query);
+  if (provider.protocol === 'meshmap')
+    return normalizeMeshmapExperiences(payload, provider, query);
+  if (provider.protocol === 'arpoise')
+    return normalizeArpoiseExperiences(payload, provider, query);
   return normalizeOscpExperiences(payload, provider, query);
 }
 
@@ -510,7 +613,9 @@ function createRateLimiter(maxPerMinute, now = () => Date.now()) {
   const hits = new Map();
   return (key) => {
     const timestamp = now();
-    const recent = (hits.get(key) || []).filter((time) => timestamp - time < 60_000);
+    const recent = (hits.get(key) || []).filter(
+      (time) => timestamp - time < 60_000,
+    );
     if (recent.length >= maxPerMinute) {
       hits.set(key, recent);
       return false;
@@ -519,7 +624,8 @@ function createRateLimiter(maxPerMinute, now = () => Date.now()) {
     hits.set(key, recent);
     if (hits.size > 512) {
       for (const [candidate, times] of hits) {
-        if (!times.length || timestamp - times.at(-1) >= 60_000) hits.delete(candidate);
+        if (!times.length || timestamp - times.at(-1) >= 60_000)
+          hits.delete(candidate);
       }
     }
     return true;
@@ -530,7 +636,8 @@ function sendJson(res, statusCode, payload, extraHeaders = {}) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
-  for (const [name, value] of Object.entries(extraHeaders)) res.setHeader(name, value);
+  for (const [name, value] of Object.entries(extraHeaders))
+    res.setHeader(name, value);
   res.end(JSON.stringify(payload));
 }
 
@@ -539,20 +646,34 @@ function parsedQuery(req) {
   const lat = finiteNumber(url.searchParams.get('lat'));
   const lon = finiteNumber(url.searchParams.get('lon'));
   const radiusM = finiteNumber(url.searchParams.get('radiusM'));
-  if (!validCoordinates(lat, lon) || radiusM === null || radiusM < 100 || radiusM > 100_000) {
+  if (
+    !validCoordinates(lat, lon) ||
+    radiusM === null ||
+    radiusM < 100 ||
+    radiusM > 100_000
+  ) {
     return null;
   }
   const providers = cleanText(url.searchParams.get('providers'), 512) || 'all';
-  const includePast = /^(1|true)$/i.test(url.searchParams.get('includePast') || '');
+  const includePast = /^(1|true)$/i.test(
+    url.searchParams.get('includePast') || '',
+  );
   return { lat, lon, radiusM: Math.round(radiusM), providers, includePast };
 }
 
 function selectedProviderIds(selection, providers) {
-  const available = providers.filter((provider) => provider.enabled && provider.configured);
+  const available = providers.filter(
+    (provider) => provider.enabled && provider.configured,
+  );
   if (selection === 'all') return new Set(available.map(({ id }) => id));
   if (selection === 'none') return new Set();
   const valid = new Set(available.map(({ id }) => id));
-  return new Set(selection.split(',').map((value) => value.trim()).filter((id) => valid.has(id)));
+  return new Set(
+    selection
+      .split(',')
+      .map((value) => value.trim())
+      .filter((id) => valid.has(id)),
+  );
 }
 
 function cacheKey(provider, query) {
@@ -590,10 +711,15 @@ export function createArContentProxyPlugin({
     const key = cacheKey(provider, query);
     const cached = cache.get(key);
     const age = cached ? now() - cached.cachedAt : Number.POSITIVE_INFINITY;
-    if (age <= FRESH_CACHE_MS) return { experiences: cached.experiences, cache: 'hit' };
+    if (age <= FRESH_CACHE_MS)
+      return { experiences: cached.experiences, cache: 'hit' };
     try {
       const request = coalesceProxyRequest(inFlight, key, async () => {
-        const experiences = await fetchProviderExperiences(provider, query, fetchImpl);
+        const experiences = await fetchProviderExperiences(
+          provider,
+          query,
+          fetchImpl,
+        );
         cache.set(key, { experiences, cachedAt: now() });
         if (cache.size > 300) cache.delete(cache.keys().next().value);
         return { experiences, cache: 'upstream' };
@@ -601,7 +727,11 @@ export function createArContentProxyPlugin({
       return await request.promise;
     } catch (error) {
       if (cached && age <= STALE_CACHE_MS) {
-        return { experiences: cached.experiences, cache: 'stale', error: cleanText(error?.message, 180) };
+        return {
+          experiences: cached.experiences,
+          cache: 'stale',
+          error: cleanText(error?.message, 180),
+        };
       }
       throw error;
     }
@@ -610,7 +740,11 @@ export function createArContentProxyPlugin({
   function install(middlewares) {
     middlewares.use('/api/ar-content', async (req, res) => {
       if (req.method !== 'GET') {
-        sendJson(res, 405, { error: 'Method not allowed', providers: [], experiences: [] });
+        sendJson(res, 405, {
+          error: 'Method not allowed',
+          providers: [],
+          experiences: [],
+        });
         return;
       }
       if (!allowRequest(String(req.socket?.remoteAddress || 'local'))) {
@@ -634,50 +768,81 @@ export function createArContentProxyPlugin({
 
       const selected = selectedProviderIds(query.providers, providers);
       const statuses = new Map();
-      const groups = await mapWithConcurrency(providers, MAX_PROVIDER_CONCURRENCY, async (provider) => {
-        if (!provider.configured) {
-          statuses.set(provider.id, { status: 'unconfigured', count: 0, error: provider.reason });
-          return [];
-        }
-        if (!provider.enabled) {
-          statuses.set(provider.id, { status: 'disabled', count: 0, error: provider.reason });
-          return [];
-        }
-        if (!selected.has(provider.id)) {
-          statuses.set(provider.id, { status: 'filtered', count: 0, error: null });
-          return [];
-        }
-        try {
-          const result = await loadProvider(provider, query);
-          const experiences = filterExperiencesByTime(result.experiences, {
-            includePast: query.includePast,
-            now: now(),
-          });
-          statuses.set(provider.id, {
-            status: result.cache === 'stale' ? 'stale' : 'ok',
-            count: experiences.length,
-            error: result.error || null,
-          });
-          return experiences;
-        } catch (error) {
-          statuses.set(provider.id, {
-            status: 'error',
-            count: 0,
-            error: cleanText(error?.message, 180) || 'Provider request failed',
-          });
-          return [];
-        }
-      });
-      const experiences = groups.flat()
-        .sort((a, b) => (a.distanceM ?? Number.POSITIVE_INFINITY) - (b.distanceM ?? Number.POSITIVE_INFINITY))
+      const groups = await mapWithConcurrency(
+        providers,
+        MAX_PROVIDER_CONCURRENCY,
+        async (provider) => {
+          if (!provider.configured) {
+            statuses.set(provider.id, {
+              status: 'unconfigured',
+              count: 0,
+              error: provider.reason,
+            });
+            return [];
+          }
+          if (!provider.enabled) {
+            statuses.set(provider.id, {
+              status: 'disabled',
+              count: 0,
+              error: provider.reason,
+            });
+            return [];
+          }
+          if (!selected.has(provider.id)) {
+            statuses.set(provider.id, {
+              status: 'filtered',
+              count: 0,
+              error: null,
+            });
+            return [];
+          }
+          try {
+            const result = await loadProvider(provider, query);
+            const experiences = filterExperiencesByTime(result.experiences, {
+              includePast: query.includePast,
+              now: now(),
+            });
+            statuses.set(provider.id, {
+              status: result.cache === 'stale' ? 'stale' : 'ok',
+              count: experiences.length,
+              error: result.error || null,
+            });
+            return experiences;
+          } catch (error) {
+            statuses.set(provider.id, {
+              status: 'error',
+              count: 0,
+              error:
+                cleanText(error?.message, 180) || 'Provider request failed',
+            });
+            return [];
+          }
+        },
+      );
+      const experiences = groups
+        .flat()
+        .sort(
+          (a, b) =>
+            (a.distanceM ?? Number.POSITIVE_INFINITY) -
+            (b.distanceM ?? Number.POSITIVE_INFINITY),
+        )
         .slice(0, MAX_EXPERIENCES_PER_PROVIDER * Math.max(1, selected.size));
       sendJson(res, 200, {
-        query: { lat: query.lat, lon: query.lon, radiusM: query.radiusM, includePast: query.includePast },
+        query: {
+          lat: query.lat,
+          lon: query.lon,
+          radiusM: query.radiusM,
+          includePast: query.includePast,
+        },
         providers: providers.map((provider) => ({
           ...publicArProvider(provider),
           effectiveRadiusM: Math.min(query.radiusM, provider.maxRadiusM),
           coverageLimited: query.radiusM > provider.maxRadiusM,
-          ...(statuses.get(provider.id) || { status: 'filtered', count: 0, error: null }),
+          ...(statuses.get(provider.id) || {
+            status: 'filtered',
+            count: 0,
+            error: null,
+          }),
         })),
         experiences,
       });

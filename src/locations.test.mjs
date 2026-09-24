@@ -1,3 +1,4 @@
+import { createStandalonePlaceSearch } from './standalone/placeSearch.js';
 // Camera-framing mode contract for fly_to_location (field test 8 + rootcause doc §3):
 // parks/lakes/campuses and streets are NOT precise POIs — flying to "Zilker Park" at
 // building range (250 m) lands on a random rooftop. Pure mapping tests, no network.
@@ -62,7 +63,7 @@ async function runSearch(viewer, options, { result = AUSTIN_RESULT, query = 'aus
     json: async () => ({ status: 'OK', results: [result] }),
   });
   try {
-    return await searchAndFlyTo(viewer, query, options);
+    return await searchAndFlyTo(viewer, query, { placeSearch: createStandalonePlaceSearch({ resolveApiKey: () => globalThis.window?.__GOOGLE_MAPS_API_KEY__ }), ...options });
   } finally {
     globalThis.fetch = priorFetch;
     if (hadWindow) globalThis.window = priorWindow;
@@ -116,7 +117,7 @@ test('admin types win over area types when both present', () => {
   assert.equal(geocodeNavigationMode(['locality', 'park', 'political']), 'city-overview');
 });
 
-// Natural-region framing heuristic (field test 2026-07-23): "take me to the
+// Natural-region framing heuristic (owner field test 2026-07-23): "take me to the
 // Rocky Mountains" geocodes as natural_feature with a ~2,700 km viewport — framing
 // the whole box flies the camera to space. Region-scale viewports get a capped
 // oblique swath instead; ordinary parks/lakes keep full-viewport framing.
@@ -474,7 +475,7 @@ test('regionFramingPlan: invalid viewports return null', () => {
   assert.equal(regionFramingPlan({ southwest: { lat: NaN, lng: 0 }, northeast: { lat: 1, lng: 1 } }), null);
 });
 
-// Globe-view preset (field test 2026-07-23): "zoom out to a globe view" needs an
+// Globe-view preset (owner field test 2026-07-23): "zoom out to a globe view" needs an
 // ABSOLUTE full-earth framing — the relative zoom tool can never reach it. The preset
 // must sit inside the app's own 'global' view-scale band (>12,000 km camera height,
 // classifyViewScale in gevActions.js) and under the fly_to rangeM ceiling (20,000 km).
