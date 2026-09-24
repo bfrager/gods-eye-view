@@ -91,8 +91,28 @@ test('experience normalization rejects invalid coordinates and unsafe launch URL
   assert.equal(normalizeArExperience({ ...EXPERIENCES[0], lat: 120 }), null);
   assert.equal(normalizeArExperience({ ...EXPERIENCES[0], launchUrl: 'javascript:alert(1)' }).launchUrl, null);
   assert.equal(
-    normalizeArExperience({ ...EXPERIENCES[0], launchUrl: 'arpoisedeeplink://DeeplinkLayer?Default-Test' }).launchUrl,
+    normalizeArExperience({
+      ...EXPERIENCES[0],
+      launchUrl: 'arpoisedeeplink://DeeplinkLayer?Default-Test',
+    }).launchUrl,
+    null,
+  );
+  assert.equal(
+    normalizeArExperience({
+      ...EXPERIENCES[0],
+      providerId: 'arpoise',
+      protocol: 'arpoise',
+      launchUrl: 'arpoisedeeplink://DeeplinkLayer?Default-Test',
+    }).launchUrl,
     'arpoisedeeplink://DeeplinkLayer?Default-Test',
+  );
+  assert.equal(
+    normalizeArExperience({ ...EXPERIENCES[0], altitudeM: null }).altitudeM,
+    null,
+  );
+  assert.equal(
+    normalizeArExperience({ ...EXPERIENCES[0], altitudeM: '  ' }).altitudeM,
+    null,
   );
 });
 
@@ -323,5 +343,115 @@ test('invalid configured provider colors fall back without preventing rendering'
   assert.equal(layer.getStats().count, 1);
   assert.equal(layer.getStats().error, null);
 
+  layer.destroy(viewer);
+});
+
+test('a centerless refresh invalidates an older request even when fetch ignores abort', async () => {
+  const dataSources = [];
+  const publications = [];
+  let hasCenter = true;
+  let resolveFetch;
+  const layer = createArExperiencesLayer({
+    queryResolver: () =>
+      hasCenter
+        ? { lat: 37.7599, lon: -122.4148, radiusM: 5000 }
+        : null,
+    fetchJson: () =>
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    overlayHost: {
+      setEntries(sourceId, entries) {
+        publications.push({ sourceId, entries });
+      },
+      setVisible() {},
+      clearSource() {},
+      hitTest() {
+        return null;
+      },
+    },
+    handlerFactory: () => ({ setInputAction() {}, destroy() {} }),
+  });
+  const viewer = {
+    dataSources: {
+      add(source) {
+        dataSources.push(source);
+        return source;
+      },
+      remove() {},
+    },
+    scene: { canvas: {} },
+  };
+
+  layer.init(viewer);
+  layer.enable();
+  const olderUpdate = layer.update(viewer);
+  await new Promise((resolve) => setImmediate(resolve));
+  hasCenter = false;
+  await layer.update(viewer);
+  const publicationCount = publications.length;
+
+  resolveFetch({ providers: PROVIDERS, experiences: EXPERIENCES });
+  await olderUpdate;
+
+  assert.equal(publications.length, publicationCount);
+  assert.equal(dataSources[0].entities.values.length, 0);
+  assert.equal(layer.getStats().loading, false);
+  assert.equal(layer.getStats().available, false);
+  assert.match(layer.getStats().error, /center is unavailable/i);
+  layer.destroy(viewer);
+});
+
+test('failed refreshes expire displayed hotspots after fifteen minutes', async () => {
+  const dataSources = [];
+  let currentTime = 1_000;
+  let requestCount = 0;
+  const layer = createArExperiencesLayer({
+    now: () => currentTime,
+    queryResolver: () => ({ lat: 37.7599, lon: -122.4148, radiusM: 5000 }),
+    fetchJson: async () => {
+      requestCount += 1;
+      if (requestCount === 1)
+        return { providers: PROVIDERS, experiences: EXPERIENCES };
+      throw new Error('AR endpoint unavailable');
+    },
+    overlayHost: {
+      setEntries() {},
+      setVisible() {},
+      clearSource() {},
+      hitTest() {
+        return null;
+      },
+    },
+    handlerFactory: () => ({ setInputAction() {}, destroy() {} }),
+  });
+  const viewer = {
+    dataSources: {
+      add(source) {
+        dataSources.push(source);
+        return source;
+      },
+      remove() {},
+    },
+    scene: { canvas: {} },
+  };
+
+  layer.init(viewer);
+  layer.enable();
+  await layer.update(viewer);
+  assert.equal(layer.getStats().count, 2);
+
+  currentTime += 15 * 60_000;
+  await layer.update(viewer);
+  assert.equal(layer.getStats().count, 2);
+  assert.equal(layer.getStats().stale, true);
+
+  currentTime += 1;
+  await layer.update(viewer);
+  assert.equal(layer.getStats().count, 0);
+  assert.equal(dataSources[0].entities.values.length, 0);
+  assert.equal(layer.getStats().stale, false);
+  assert.equal(layer.getStats().available, false);
+  assert.match(layer.getStats().error, /endpoint unavailable/i);
   layer.destroy(viewer);
 });

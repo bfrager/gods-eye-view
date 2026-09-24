@@ -15,7 +15,7 @@ const stable = (value) =>
         )
       : value;
 
-test('the complete Realtime tool payload pins the additive analyst, satellite, Local ADS-B and Cyber release', () => {
+test('the complete Realtime tool payload pins the additive analyst, satellite, AR, Local ADS-B and Cyber release', () => {
   const digest = createHash('sha256')
     .update(
       JSON.stringify(
@@ -27,10 +27,18 @@ test('the complete Realtime tool payload pins the additive analyst, satellite, L
     .digest('hex');
   assert.equal(
     digest,
-    // Re-derived for the additive `local-adsb` set_layer_visibility value and
-    // the Cyber HUD layout; the separate sonar tool is excluded above.
-    '590d537d93e132ac64ac5e211ad5bb9d7d1b1f22e2dd963dda5465fab4510a3b',
+    // Re-derived for the additive AR and `local-adsb` layer values and the
+    // Cyber HUD layout; the separate sonar tool is excluded above.
+    'e16056a8844f307d59e861573bc9f1eb3addb85ec9705ded2d810e8ec446c211',
   );
+});
+
+test('Realtime layer tools expose the AR experiences layer', () => {
+  for (const name of ['set_layer_visibility', 'show_data_layers_menu']) {
+    const layerIds = GEV_ACTION_SCHEMAS.find((tool) => tool.name === name)
+      .parameters.properties.layerId.enum;
+    assert.ok(layerIds.includes('ar-experiences'), `${name} omits AR`);
+  }
 });
 
 test('descriptions customize wording without changing immutable shared arguments', () => {
@@ -100,16 +108,18 @@ test('all legacy action arguments are byte-identical after removing the delibera
         'fire-perimeters',
       ].includes(key),
   );
-  // Local ADS-B is an additive set_layer_visibility enum value.
+  // AR and Local ADS-B are additive set_layer_visibility enum values.
   const visibility = legacy.find((tool) => tool.name === 'set_layer_visibility')
     .parameters.properties.layerId;
   visibility.enum = visibility.enum.filter(
-    (key) => !['local-adsb', 'fire-perimeters'].includes(key),
+    (key) => !['ar-experiences', 'local-adsb', 'fire-perimeters'].includes(key),
   );
   for (const tool of legacy) {
     for (const value of Object.values(tool.parameters.properties)) {
       if (value.enum)
-        value.enum = value.enum.filter((key) => key !== 'fire-perimeters');
+        value.enum = value.enum.filter(
+          (key) => !['ar-experiences', 'fire-perimeters'].includes(key),
+        );
     }
   }
   // Independently derived by executing trusted c9f9896 actionSchemas in the restricted container.

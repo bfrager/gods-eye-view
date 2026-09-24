@@ -2,6 +2,7 @@ import {
   coalesceProxyRequest,
   readResponseTextCapped,
 } from '../sources/httpBody.js';
+import { MAX_AR_PROVIDER_SELECTION_CHARS } from '../data/arProviderContract.js';
 
 const ARPOISE_DIRECTORY_URL =
   'https://www.arpoise.com/php/dir/web/porpoise.php';
@@ -31,6 +32,12 @@ function cleanText(value, maxLength = 240) {
 }
 
 function finiteNumber(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value === 'string' && !value.trim())
+  )
+    return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -98,14 +105,14 @@ function safeHttpUrl(value) {
   }
 }
 
-function safeLaunchUrl(value) {
+function safeLaunchUrl(value, { allowArpoiseDeepLink = false } = {}) {
   if (!value) return null;
   try {
     const url = new URL(String(value).trim());
     if (
       url.protocol === 'https:' ||
       url.protocol === 'http:' ||
-      url.protocol === 'arpoisedeeplink:'
+      (allowArpoiseDeepLink && url.protocol === 'arpoisedeeplink:')
     ) {
       return url.href;
     }
@@ -223,6 +230,7 @@ export function buildArProviderCatalog(env = process.env) {
   ];
 
   let oscpCount = 0;
+  const providerIds = new Set(providers.map(({ id }) => id));
   for (const [index, entry] of parseJsonArray(
     env.OSCP_INSTANCES_JSON,
   ).entries()) {
@@ -230,13 +238,20 @@ export function buildArProviderCatalog(env = process.env) {
     const slug = cleanText(entry?.id, 48)?.toLowerCase();
     const baseUrl = configuredBaseUrl(entry?.baseUrl);
     if (!slug || !PROVIDER_ID_RE.test(slug) || !baseUrl) continue;
+    const providerId = `oscp:${slug}`;
+    if (providerIds.has(providerId)) {
+      console.warn(
+        `[ar-content] Ignoring duplicate OSCP provider id "${providerId}"`,
+      );
+      continue;
+    }
     const label =
       cleanText(entry?.name || entry?.operator, 80) ||
       `OSCP Provider ${index + 1}`;
     const enabled = entry?.enabled !== false;
     const apiKeyEnv = cleanText(entry?.apiKeyEnv, 80);
     providers.push({
-      id: `oscp:${slug}`,
+      id: providerId,
       label,
       protocol: 'oscp',
       configured: true,
@@ -254,6 +269,7 @@ export function buildArProviderCatalog(env = process.env) {
         (apiKeyEnv ? cleanText(env[apiKeyEnv], 2048) : null),
       _launchUrlTemplate: cleanText(entry?.launchUrlTemplate, 512),
     });
+    providerIds.add(providerId);
     oscpCount += 1;
   }
 
@@ -338,7 +354,9 @@ function normalizeExperience(candidate, provider, query) {
     altitudeM: finiteNumber(candidate.altitudeM),
     distanceM: normalizedDistance(candidate.distanceM, lat, lon, query),
     contentType: cleanText(candidate.contentType, 80),
-    launchUrl: safeLaunchUrl(candidate.launchUrl),
+    launchUrl: safeLaunchUrl(candidate.launchUrl, {
+      allowArpoiseDeepLink: provider.protocol === 'arpoise',
+    }),
     sourceUrl: safeHttpUrl(candidate.sourceUrl),
     updatedAt: normalizedIso(candidate.updatedAt),
     startsAt: normalizedIso(candidate.startsAt),
@@ -599,12 +617,31 @@ async function fetchProviderExperiences(provider, query, fetchImpl) {
   if (!response.ok)
     throw new Error(`${provider.label} returned HTTP ${response.status}`);
   const payload = await readJsonCapped(response);
-  if (provider.protocol === 'geoverse')
-    return normalizeGeoverseExperiences(payload, provider, query);
-  if (provider.protocol === 'meshmap')
+  if (provider.protocol === 'geoverse') {
+    if (!Array.isArray(payload?.experiences))
+      throw new Error(
+        `${provider.label} returned an invalid experiences payload`,
+      );
+    const experiences = normalizeGeoverseExperiences(payload, provider, query);
+    if (payload.experiences.length > 0 && experiences.length === 0)
+      throw new Error(`${provider.label} returned invalid experience records`);
+    return experiences;
+  }
+  if (provider.protocol === 'meshmap') {
+    if (!Array.isArray(payload?.pins) && !Array.isArray(payload))
+      throw new Error(`${provider.label} returned an invalid pins payload`);
     return normalizeMeshmapExperiences(payload, provider, query);
-  if (provider.protocol === 'arpoise')
+  }
+  if (provider.protocol === 'arpoise') {
+    if (
+      finiteNumber(payload?.errorCode) !== 0 ||
+      !Array.isArray(payload?.hotspots)
+    )
+      throw new Error(`${provider.label} returned an invalid hotspots payload`);
     return normalizeArpoiseExperiences(payload, provider, query);
+  }
+  if (!Array.isArray(payload?.data))
+    throw new Error(`${provider.label} returned an invalid OSCP payload`);
   return normalizeOscpExperiences(payload, provider, query);
 }
 
@@ -654,7 +691,11 @@ function parsedQuery(req) {
   ) {
     return null;
   }
-  const providers = cleanText(url.searchParams.get('providers'), 512) || 'all';
+  const providers =
+    cleanText(
+      url.searchParams.get('providers'),
+      MAX_AR_PROVIDER_SELECTION_CHARS,
+    ) || 'all';
   const includePast = /^(1|true)$/i.test(
     url.searchParams.get('includePast') || '',
   );

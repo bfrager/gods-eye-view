@@ -348,6 +348,30 @@ test('AR provider filters and past-experience visibility round-trip through v2',
   });
 });
 
+test('maximum-length AR provider filters round-trip with other AR options', () => {
+  const providerIds = Array.from(
+    { length: 24 },
+    (_, index) =>
+      `oscp:${String(index).padStart(2, '0')}${'x'.repeat(46)}`,
+  );
+  const providers = providerIds.join(',');
+  assert.equal(providers.length, 1295);
+  const state = normalizeLayerState({
+    enabledLayerIds: ['ar-experiences'],
+    options: {
+      'ar-experiences': { providers, includePast: true },
+    },
+  });
+  const encoded = encode(state);
+  assert.ok(new URLSearchParams(encoded).get('lo').length > 1024);
+  assert.deepEqual(
+    decodeLayerStateParams(new URLSearchParams(encoded)).options[
+      'ar-experiences'
+    ],
+    state.options['ar-experiences'],
+  );
+});
+
 test('unknown and forbidden option fields are ignored while missing options use codec defaults', () => {
   const decoded = decodeLayerStateParams(
     new URLSearchParams(
@@ -2416,15 +2440,16 @@ test('recent-imagery rejects impossible days and out-of-range edges instead of r
       viirs: false,
     },
   );
-  // An oversized payload fails closed at the shared 512-character cap.
-  const long = '1.a.S20260918_'.repeat(40);
-  assert.ok(imageryOptions(long.slice(0, 512)));
+  // An oversized payload fails closed at the shared 2048-character cap, which
+  // leaves room for all 24 supported OSCP provider IDs.
+  const long = '1.a.S20260918_'.repeat(150);
+  assert.ok(imageryOptions(long.slice(0, 2048)));
   assert.equal(
     decodeLayerStateParams(
       new URLSearchParams([
         ['v', '2'],
         ['l', '1'],
-        ['lo', long.slice(0, 513)],
+        ['lo', long.slice(0, 2049)],
       ]),
     ),
     null,

@@ -18,14 +18,14 @@ const PENDING_TRACKING_POLL_MS = 1_000;
 const TRACKING_ID_GRAMMAR = /^[0-9a-z~_-]{1,16}$/;
 /**
  * Ceilings for the untrusted v2 layer fields. Both are far above any legitimate
- * payload (16 one-character tokens; a dozen short option assignments), so a
- * value past them is malformed or hostile. Reject the WHOLE payload, matching
- * the unknown-token rule — never salvage a prefix.
+ * payload. The options ceiling also accommodates the bounded 1536-character AR
+ * provider selection plus the other compact option assignments. Reject the
+ * WHOLE payload, matching the unknown-token rule — never salvage a prefix.
  */
 const MAX_ENABLED_LAYERS_CHARS = 64;
-const MAX_LAYER_OPTIONS_CHARS = 512;
+const MAX_LAYER_OPTIONS_CHARS = 2048;
 const AR_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9:_-]{0,63}$/;
-const MAX_AR_PROVIDER_SELECTION_CHARS = 512;
+const MAX_AR_PROVIDER_SELECTION_CHARS = 1536;
 export const LAYER_STATE_STORAGE_KEY = 'gev:layer-state:v2';
 export const LAYER_RESTORE_ORIGINS = Object.freeze({
   share: 'share-restore',

@@ -98,6 +98,23 @@ test('provider catalog requires a Geoverse launch origin and caps OSCP operators
   assert.equal(providers.filter(({ protocol }) => protocol === 'oscp').length, 24);
 });
 
+test('provider catalog skips duplicate OSCP ids and reports the configuration issue', (t) => {
+  const warnings = [];
+  t.mock.method(console, 'warn', (message) => warnings.push(message));
+  const providers = buildArProviderCatalog({
+    OSCP_INSTANCES_JSON: JSON.stringify([
+      { id: 'city-lab', baseUrl: 'https://first.example' },
+      { id: 'CITY-LAB', baseUrl: 'https://duplicate.example' },
+    ]),
+  });
+
+  assert.deepEqual(
+    providers.filter(({ protocol }) => protocol === 'oscp').map(({ id }) => id),
+    ['oscp:city-lab'],
+  );
+  assert.match(warnings[0], /duplicate OSCP provider id "oscp:city-lab"/i);
+});
+
 test('configured nearby paths cannot change the trusted provider origin', async () => {
   const providers = buildArProviderCatalog({
     MESHMAP_API_URL: 'https://api.meshmap.example',
@@ -208,6 +225,7 @@ test('Geoverse nearby results become launchable normalized experiences', () => {
   assert.equal(experiences[0].creator, 'creator-42');
   assert.equal(experiences[0].lat, 37.7599);
   assert.equal(experiences[0].lon, -122.4148);
+  assert.equal(experiences[0].altitudeM, null);
   assert.equal(experiences[0].distanceM, 42.5);
   assert.equal(
     experiences[0].launchUrl,
@@ -303,6 +321,40 @@ test('OSCP content is attributed to the configured operator rather than OSCP', (
   assert.equal(experiences[0].title, 'Harbor Sculpture');
   assert.equal(experiences[0].creator, 'City Lab');
   assert.equal(experiences[0].altitudeM, 12);
+});
+
+test('only ARpoise records may retain the ARpoise native deep-link scheme', () => {
+  const oscpProvider = buildArProviderCatalog({
+    OSCP_INSTANCES_JSON: JSON.stringify([
+      { id: 'city-lab', baseUrl: 'https://oscp.city.example' },
+    ]),
+  }).find(({ id }) => id === 'oscp:city-lab');
+  const [experience] = normalizeOscpExperiences(
+    {
+      data: [
+        {
+          id: 'native-crossing',
+          object: {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [-1.47, 50.93] },
+            properties: {
+              content: [
+                {
+                  url: 'arpoisedeeplink://DeeplinkLayer?Untrusted',
+                  tags: { name: 'Untrusted Native Link' },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+    oscpProvider,
+    QUERY,
+  );
+
+  assert.equal(experience.launchUrl, null);
+  assert.equal(experience.sourceUrl, null);
 });
 
 test('expired experiences are hidden unless the past filter is enabled', () => {
@@ -478,6 +530,106 @@ test('AR proxy serves stale cache on transient failure and expires it after fift
   assert.equal(upstreamCalls, 3);
 });
 
+test('invalid HTTP 200 provider payload uses stale cache instead of replacing it', async () => {
+  let timestamp = 0;
+  let upstreamCalls = 0;
+  const plugin = createArContentProxyPlugin({
+    env: {
+      MESHMAP_API_URL: 'https://api.meshmap.example',
+      GEV_RATELIMIT_AR_PER_MIN: '0',
+    },
+    now: () => timestamp,
+    fetchImpl: async () => {
+      upstreamCalls += 1;
+      if (upstreamCalls === 1) {
+        return new Response(
+          JSON.stringify({
+            pins: [
+              {
+                id: 'cached-pin',
+                title: 'Cached Portal',
+                latitude: QUERY.lat,
+                longitude: QUERY.lon,
+                visibility: 'public',
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: 'schema changed' }), {
+        status: 200,
+      });
+    },
+  });
+  const handler = arProxyHandler(plugin);
+  const query = { ...QUERY, providers: 'meshmap' };
+
+  const fresh = await invokeArProxy(handler, query);
+  timestamp = 61_000;
+  const stale = await invokeArProxy(handler, query);
+
+  assert.deepEqual(fresh.payload.experiences.map(({ id }) => id), [
+    'cached-pin',
+  ]);
+  assert.deepEqual(stale.payload.experiences.map(({ id }) => id), [
+    'cached-pin',
+  ]);
+  const meshmap = stale.payload.providers.find(({ id }) => id === 'meshmap');
+  assert.equal(meshmap.status, 'stale');
+  assert.match(meshmap.error, /invalid pins payload/i);
+});
+
+test('invalid Geoverse records use stale cache instead of becoming healthy empty data', async () => {
+  let timestamp = 0;
+  let upstreamCalls = 0;
+  const plugin = createArContentProxyPlugin({
+    env: {
+      GEOVERSE_API_URL: 'https://api.geoverse.example',
+      GEOVERSE_WEB_URL: 'https://geoverse.example',
+      GEV_RATELIMIT_AR_PER_MIN: '0',
+    },
+    now: () => timestamp,
+    fetchImpl: async () => {
+      upstreamCalls += 1;
+      return new Response(
+        JSON.stringify({
+          experiences:
+            upstreamCalls === 1
+              ? [
+                  {
+                    id: 'cached-geoverse',
+                    name: 'Cached Mural',
+                    lat: QUERY.lat,
+                    lng: QUERY.lon,
+                  },
+                ]
+              : [{ unexpected: 'schema changed' }],
+        }),
+        { status: 200 },
+      );
+    },
+  });
+  const handler = arProxyHandler(plugin);
+  const query = { ...QUERY, providers: 'geoverse' };
+
+  const fresh = await invokeArProxy(handler, query);
+  timestamp = 61_000;
+  const stale = await invokeArProxy(handler, query);
+
+  assert.deepEqual(fresh.payload.experiences.map(({ id }) => id), [
+    'cached-geoverse',
+  ]);
+  assert.deepEqual(stale.payload.experiences.map(({ id }) => id), [
+    'cached-geoverse',
+  ]);
+  const geoverse = stale.payload.providers.find(
+    ({ id }) => id === 'geoverse',
+  );
+  assert.equal(geoverse.status, 'stale');
+  assert.match(geoverse.error, /invalid experience records/i);
+});
+
 test('AR proxy enforces the per-client request rate limit', async () => {
   const plugin = createArContentProxyPlugin({
     env: { GEV_RATELIMIT_AR_PER_MIN: '1' },
@@ -493,6 +645,23 @@ test('AR proxy enforces the per-client request rate limit', async () => {
   assert.equal(limited.statusCode, 429);
   assert.equal(limited.payload.error, 'Rate limit exceeded');
   assert.equal(limited.headers.get('retry-after'), '5');
+});
+
+test('AR proxy rejects missing or blank coordinates instead of coercing them to zero', async () => {
+  const plugin = createArContentProxyPlugin({
+    env: { GEV_RATELIMIT_AR_PER_MIN: '0' },
+  });
+  const handler = arProxyHandler(plugin);
+
+  for (const query of [
+    { lon: String(QUERY.lon), radiusM: String(QUERY.radiusM) },
+    { lat: '', lon: String(QUERY.lon), radiusM: String(QUERY.radiusM) },
+    { lat: String(QUERY.lat), radiusM: String(QUERY.radiusM) },
+  ]) {
+    const response = await invokeArProxy(handler, query);
+    assert.equal(response.statusCode, 400);
+    assert.match(response.payload.error, /lat, lon, and radiusM/);
+  }
 });
 
 test('AR proxy fetches providers with at most four concurrent upstream requests', async () => {
@@ -524,4 +693,43 @@ test('AR proxy fetches providers with at most four concurrent upstream requests'
   assert.equal(response.statusCode, 200);
   assert.equal(maxActive, 4);
   assert.equal(response.payload.providers.filter(({ protocol }) => protocol === 'oscp').length, 7);
+});
+
+test('AR proxy preserves a long selection containing all supported OSCP operators', async () => {
+  const instances = Array.from({ length: 24 }, (_, index) => ({
+    id: `${String(index).padStart(2, '0')}${'x'.repeat(46)}`,
+    baseUrl: `https://oscp-${index}.example`,
+  }));
+  const selected = instances.map(({ id }) => `oscp:${id}`).join(',');
+  assert.ok(selected.length > 512);
+  let upstreamCalls = 0;
+  const plugin = createArContentProxyPlugin({
+    env: {
+      OSCP_INSTANCES_JSON: JSON.stringify(instances),
+      GEV_RATELIMIT_AR_PER_MIN: '0',
+    },
+    fetchImpl: async () => {
+      upstreamCalls += 1;
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    },
+  });
+
+  const response = await invokeArProxy(arProxyHandler(plugin), {
+    ...QUERY,
+    providers: selected,
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(upstreamCalls, 24);
+  assert.equal(
+    response.payload.providers.filter(({ protocol }) => protocol === 'oscp')
+      .length,
+    24,
+  );
+  assert.equal(
+    response.payload.providers.filter(
+      ({ protocol, status }) => protocol === 'oscp' && status === 'ok',
+    ).length,
+    24,
+  );
 });

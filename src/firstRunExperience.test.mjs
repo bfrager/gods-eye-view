@@ -656,7 +656,7 @@ test('the DISPLAY rail starts collapsed on a first run, and a stored choice wins
 
 // ── Voice: instruction-only, tool schema unchanged ─────────────────────
 
-test('the voice TOOL SCHEMA matches the pinned release — the mission mapping is instructions only', () => {
+test('the voice TOOL SCHEMA matches the pinned AR release — the mission mapping is instructions only', () => {
   // Analyst layers and the separate satellite-pass tool deliberately extend the schema.
   // Canonical serialization pins every tool name, description, property and
   // ordering while allowing source formatting. Derived from the unchanged
@@ -667,12 +667,12 @@ test('the voice TOOL SCHEMA matches the pinned release — the mission mapping i
   // Cyber deliberately adds one layout; first-run missions still change no tools.
   hudLayout.enum = hudLayout.enum.filter((layout) => layout !== 'cyber');
   const block = JSON.stringify(legacyTools);
-  // Re-derived for the additive `local-adsb` set_layer_visibility value and
-  // its common-name mapping; the missions still ride existing tools.
-  assert.equal(block.length, 27432, 'serialized tool schema length drifted');
+  // Re-derived for the additive AR and `local-adsb` layer values and their
+  // common-name mappings; the missions still ride existing tools.
+  assert.equal(block.length, 27535, 'serialized tool schema length drifted');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    'a2a4a787f4528f75b01f3f42caec636f29c37452c0d45b11f4f986171d6be57d',
+    'ae87b2b743c17b65b8eb7d8c0e06f7a43b9ad0e3549257e090a205c076a6665a',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
   const instructions = fs.readFileSync(new URL('../server/providers/openai/instructions.js', import.meta.url), 'utf8');

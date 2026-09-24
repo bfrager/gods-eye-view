@@ -28,6 +28,7 @@ export const AR_OVERLAY_SOURCE_ID = 'ar-experiences';
 export const AR_OVERLAY_COHORT_LIMIT = 80;
 export const AR_OVERLAY_COLLISION_CAPACITY = 56;
 export const DEFAULT_AR_INCLUDE_PAST = false;
+const MAX_STALE_EXPERIENCE_AGE_MS = 15 * 60_000;
 const DEFAULT_OVERLAY_HOST = Object.freeze({
   clearSource: clearOverlaySource,
   hitTest: hitTestWorldOverlay,
@@ -44,18 +45,24 @@ function cleanText(value, maxLength = 240) {
 }
 
 function finiteNumber(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value === 'string' && !value.trim())
+  )
+    return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
 
-function safeLaunchUrl(value) {
+function safeLaunchUrl(value, { allowArpoiseDeepLink = false } = {}) {
   if (!value) return null;
   try {
     const url = new URL(String(value).trim());
     if (
       url.protocol === 'https:' ||
       url.protocol === 'http:' ||
-      url.protocol === 'arpoisedeeplink:'
+      (allowArpoiseDeepLink && url.protocol === 'arpoisedeeplink:')
     ) {
       return url.href;
     }
@@ -182,6 +189,9 @@ export function normalizeArExperience(candidate) {
   const providerId = cleanText(candidate?.providerId, 64)?.toLowerCase();
   const lat = finiteNumber(candidate?.lat);
   const lon = finiteNumber(candidate?.lon);
+  const allowArpoiseDeepLink =
+    providerId === 'arpoise' &&
+    cleanText(candidate?.protocol, 40)?.toLowerCase() === 'arpoise';
   if (
     !id ||
     !providerId ||
@@ -206,7 +216,9 @@ export function normalizeArExperience(candidate) {
     altitudeM: finiteNumber(candidate?.altitudeM),
     distanceM: finiteNumber(candidate?.distanceM),
     contentType: cleanText(candidate?.contentType, 80),
-    launchUrl: safeLaunchUrl(candidate?.launchUrl),
+    launchUrl: safeLaunchUrl(candidate?.launchUrl, {
+      allowArpoiseDeepLink,
+    }),
     sourceUrl: safeLaunchUrl(candidate?.sourceUrl),
     updatedAt: normalizedIso(candidate?.updatedAt),
     startsAt: normalizedIso(candidate?.startsAt),
@@ -280,7 +292,11 @@ export function createArOverlayEntry(
 }
 
 export function launchArExperience(experience) {
-  const target = safeLaunchUrl(experience?.launchUrl || experience?.sourceUrl);
+  const target = safeLaunchUrl(experience?.launchUrl || experience?.sourceUrl, {
+    allowArpoiseDeepLink:
+      experience?.providerId === 'arpoise' &&
+      experience?.protocol === 'arpoise',
+  });
   if (!target || typeof window === 'undefined') return false;
   const protocol = new URL(target).protocol;
   if (protocol === 'arpoisedeeplink:') {
@@ -505,16 +521,19 @@ export function createArExperiencesLayer({
   }
 
   async function update(targetViewer = viewer, { signal } = {}) {
+    requestController?.abort();
+    requestController = null;
+    const generation = ++requestGeneration;
     const query = queryResolver(targetViewer);
     if (!query) {
+      loading = false;
       error = 'Map center is unavailable';
       available = false;
+      rowControlsListener?.();
       return true;
     }
-    requestController?.abort();
     const controller = new AbortController();
     requestController = controller;
-    const generation = ++requestGeneration;
     const forwardAbort = () => controller.abort(signal?.reason);
     signal?.addEventListener?.('abort', forwardAbort, { once: true });
     loading = true;
@@ -583,9 +602,19 @@ export function createArExperiencesLayer({
       if (controller.signal.aborted || caught?.name === 'AbortError')
         return true;
       error = cleanText(caught?.message, 180) || 'AR provider request failed';
-      degraded = experiences.length > 0;
-      stale = experiences.length > 0;
-      available = experiences.length > 0;
+      const staleAgeMs = Number.isFinite(lastUpdate)
+        ? Math.max(0, now() - lastUpdate)
+        : Number.POSITIVE_INFINITY;
+      const retainStale =
+        experiences.length > 0 && staleAgeMs <= MAX_STALE_EXPERIENCE_AGE_MS;
+      if (!retainStale && experiences.length > 0) {
+        experiences = [];
+        renderFingerprint = visualFingerprint(providers, experiences);
+        render();
+      }
+      degraded = retainStale;
+      stale = retainStale;
+      available = retainStale;
       return true;
     } finally {
       signal?.removeEventListener?.('abort', forwardAbort);
