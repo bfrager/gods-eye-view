@@ -6,6 +6,147 @@
   links; expired experiences are opt-in through the Past filter. ARpoise stays
   disabled by default pending maintainer reuse and rate-limit confirmation.
 
+- Public Overpass instances are no longer used by default. Street Traffic
+  roads come from TomTom flow tiles, OpenFreeMap vector tiles, or both, chosen
+  on the layer row (TomTom / OSM / Hybrid) or with `?trafficRoads=`. With a
+  TomTom key the default is Hybrid: TomTom roads with live flow, plus
+  OpenFreeMap roads TomTom does not cover, simulated. Without a key every
+  choice draws OpenFreeMap roads. TomTom mode shows only roads with flow; OSM
+  mode matches TomTom flow onto OpenFreeMap roads for congestion colors,
+  speeds and closures, and unmatched roads stay simulated. Road failures name
+  OpenFreeMap and retain HTTP status or timeout reasons separately from TomTom.
+  Flow coverage counts
+  rendered dots on roads with flow; mapped military areas come from OpenFreeMap and
+  follow settled camera changes with cached tiles and retained site entities.
+  Superseded requests preserve the next view’s pending load.
+  Tile and API transports can be injected independently; the optional Overpass
+  ALPR adapter remains available.
+  OSM-derived layers share one attribution entry and a persistent inline map credit,
+  including routing, Warendorf cameras, datacenters, dams and the Nepal locator.
+  Military areas use bundled Overture/OSM names; wide views show bounded,
+  decluttered named points that follow camera motion while Contacts holds a subject,
+  using the shared world-overlay host for wide-point and polygon titles. Polygons appear while names load; cancelled views
+  cannot publish late names, and stalled name downloads can retry. Merged groups
+  keep their identity and parent name when a pan hides the largest member. Late
+  names reconcile ids across zooms while retaining selection and marker ownership. Wide
+  named points remain visible until matching close polygons take over. Installation
+  titles share datacenter/dam card arbitration and keep incumbents while panning.
+  Selecting an installation replaces its label with one card; deselection restores it.
+  Selected footprints receive a translucent fill draped on the active map surface.
+  ALPR cameras come from an hourly OpenStreetMap extract (US and Canada). Features
+  without a replacement say they are unavailable; area and footprint
+  annotations check once whether an Overpass instance is configured and skip
+  the query when none is. Area annotations outline countries, states and provinces
+  (Natural Earth, including UK constituent countries) and US counties (US Census Bureau) from bundled data, with no
+  lookup. County names are disambiguated across countries by aliases, qualifiers
+  and geography. `OVERPASS_UPSTREAMS` sets an
+  Overpass instance you run or pay for. The cockpit regional brief resolves
+  regions from bundled Natural Earth data instead of Nominatim. Traffic starts on enable and paints
+  locally grounded roads incrementally, shares concurrent tile requests and
+  reuses validated heights across pans. Camera moves and arriving tiles retain
+  existing traffic dots on their roads; budget changes fade in/out incrementally,
+  height refinements ease vertically, and live flow changes color and speed in
+  place. The traffic footprint follows the reticle square at oblique angles, with
+  cached detailed near tiles and coarse distant roads. Failed detail tiles retain
+  coarse roads and retry at most three times. Road-pass deadlines also cancel
+  queued tile paints and terrain callbacks;
+  off-screen height corrections cannot hold loading open, and visible corrections
+  stay pixel-limited at canvas and camera-plane boundaries. Completed road snapshots replace
+  streamed previews without duplicating roads. Unresolved previews no longer delay or suppress detailed street roads.
+  Road admission excludes private, parking, walking and unknown traffic categories;
+  OpenStreetMap service ways and tunnels no longer receive surface vehicles.
+  Detail tiles load alongside previews, arrival bypasses the movement debounce,
+  and geographically validated rendered depth avoids repeated mesh redraws.
+  Traffic releases surface-frame listeners on disable/destroy and reuses unchanged
+  surface identities without frame-by-frame allocations.
+  Grounded dots respect building occlusion instead of drawing through roofs,
+  and the traffic status chip reports completion without a delayed text animation.
+  Short road chunks and local surface elevation keep the budget on visible
+  streets in elevated cities. Congestion and closures respect travel
+  direction. ALPR distinguishes unsupported coverage from empty results and
+  asks for zoom-in before exceeding its tile budget. Installation footprints
+  retain visible fragments without joining separate parcels across zooms or
+  across quantization gaps between different mapped identities. Keyless
+  terrain tiles retry HTTP 429 and transient gateway failures with bounded,
+  shared backoff. Operator-configured Overpass area and footprint queries
+  retain relation member geometry so their outlines remain available.
+  Contacts filters mapped installations to a true 100 km surface radius around
+  the current tracked subject,
+  including in Cockpit, instead of "?" or nothing. Search arrivals frame against the resolved
+  ground and lift the eye above the rendered surface, so Camp Mabry and Denver
+  no longer land underground (Milan Khanal, #118). Arrival corrections yield to
+  new camera owners and are cancelled on layer/app teardown. ALPR floor preparation
+  and marker placement share terrain requests, cancelled when the layer is disabled.
+  Map-source changes reposition every ALPR marker without replacing entities. ALPR loads
+  whole-city views from z9-z12 tiles, drops native ground wedges and clamping,
+  keeps frame time with ALPR on within a few percent of ALPR off, seats nearby
+  badges on the rendered surface and says when no loaded camera is on screen.
+
+- CCTV cameras whose bearing is a guess now say so. Packs mark bearings derived
+  from a hash of the camera id as `headingConfidence: 'low'`, but nothing read the
+  flag, so roughly 70% of a default catalog rendered like surveyed facings. The HUD
+  now reads `HDG n° (ESTIMATED)` and the coverage wireframe draws dashed; manual
+  calibrations and curated poses are never marked estimated (bassem chagra, #643).
+
+- Report which upstream declined a Street Traffic road load. The layer row now
+  reads `Overpass rate-limited`, `Overpass timed out`, or
+  `Overpass refused the road query (HTTP 406)` instead of a general
+  "Road data temporarily unavailable", so a reader is not sent to check a
+  TomTom key when the public OpenStreetMap mirrors are the side that failed.
+  The proxy's own 502 (every mirror unreachable) and 503 (local limiter busy)
+  read `Overpass mirrors unreachable` and `Overpass temporarily unavailable`.
+  Failures the layer cannot classify keep the general line (daikaginza, #665).
+
+- Bound the client terrain-height cache at 20 000 entries with least-recently-used eviction, so a long session no longer retains every coordinate it ever resolved. Consumer reads promote their entry and a batch still reports every point it resolved (Pedro Lobato, #594).
+
+- Release CCTV media streams whose upstream falls silent after answering. The
+  15-second media deadline covered only the wait for response headers, so a
+  camera that replied and then stopped sending held both the proxy connection
+  and its upstream socket open for as long as the camera host allowed; the
+  declared `Content-Length` ceiling was the only body bound, and a chunked or
+  length-less body had none. A 30-second idle deadline now bounds the gap
+  between upstream chunks and releases a body that has gone silent. It is
+  rescheduled while the response is still waiting to drain, so a viewer on a
+  slow link is not mistaken for a dead camera; live feeds are unaffected
+  (Ethan Stoner, #688).
+
+- Aircraft track backfill (`/api/opensky-track`, `/api/adsblol/trace`) now
+  answers 502 when the upstream body exceeds the 5 MB cap, instead of a 200
+  whose error body the client read as an empty track. The failure is cached
+  like other upstream errors, so retries inside the 60 s window do not spend
+  OpenSky credits (Raushankumar0720, #720, #722).
+
+- Saving a key from Provider Settings works again on Macs where Nix or
+  Homebrew coreutils sit ahead of `/bin` on `PATH`. The credential hardener
+  now spawns Apple's `/bin/chmod -N` by absolute path; GNU `chmod` has no `-N`,
+  so the ACL strip failed closed and every save was refused (Arthur Bogaart, #694).
+
+- Render on iPad and iPhone instead of stopping with "An error occurred while
+  rendering." Cesium's per-vertex model atmosphere binds shader `out`
+  parameters directly to varyings, which Apple's Metal/ANGLE backend cannot
+  link, so the program failed and the render loop was torn down. The stage is
+  now kept out of the pipeline on affected devices by clearing
+  `scene.fog.renderable`, which leaves `fog.enabled` — and the fog density that
+  drives 3D Tiles refinement — untouched. Detection is a WebGL2 link probe of
+  the same pattern, so a future driver fix restores the effect with no code
+  change, with iOS/iPadOS detection as a backstop. Sky atmosphere and the
+  ground-atmosphere fragment path route through locals and are unaffected;
+  affected devices lose distance fog on 3D tiles and on the globe basemaps.
+  `src/app/atmosphereCompat.test.mjs` pins the probe, the platform matrix and
+  the `renderable`-not-`enabled` choice (KnottyDyes, #705).
+
+- Make share-link layer tokens durable allocations instead of ad hoc picks.
+  Existing one-character mappings are pinned permanently, while new layers use
+  the next free single-character digit, then two-character base-36 tokens.
+  Authors record each token in the permanent JSON ledger after running
+  `npm run layer-token:next -- <layer-id>` on a rebased branch.
+  `npm run layer-token:check -- --base-ref origin/main` guards published
+  assignments and allocation order in
+  pull-request CI. Existing v2 links keep their exact meaning.
+  Malformed enabled-layer lists now reject the whole layer payload instead of
+  restoring a partial list. A QA-only browser fixture exercises the future
+  two-character path after a fixture-only exhausted-digit scenario, without
+  reserving `00` in production.
 - Region scopes in voice analyst queries ("in the Gulf of Mexico", "over
   the Alps") work again in the dev server: the bundled Natural Earth and
   neighborhood packs are fetched as JSON in the browser
@@ -463,6 +604,7 @@ This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
 ## [Unreleased]
+
 
 - Add ECMWF IFS model selection to Wind (#464, thanks @beneduzi), with model-scoped forecast-step caches, cancellation of replaced requests, and separate issue/valid timestamps.
 
